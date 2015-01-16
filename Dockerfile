@@ -111,3 +111,11 @@ EXPOSE 10101
 # MySQL
 EXPOSE 3306   
 
+# Next to be provided
+========================
+# http://www.joomla.org/
+# https://www.impresspages.org/
+# http://www.silverstripe.org/
+# http://typo3.org/
+# http://www.oscommerce.com
+
