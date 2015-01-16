@@ -12,64 +12,102 @@
 FROM ubuntu:14.04
 MAINTAINER Daniele Demichelis <demichelis@danidemi.com>
 
+
+
+
+
+# System
+# =========================
+RUN apt-get install -y python-setuptools wget
+RUN ["easy_install", "supervisor"]
+COPY supervisord.conf /etc/
+
+
+
+
+# MySQL Installation, Setup
+# =========================
 RUN ["/bin/bash", "-c", "debconf-set-selections <<< 'mysql-server mysql-server/root_password password cms'"]
 RUN ["/bin/bash", "-c", "debconf-set-selections <<< 'mysql-server mysql-server/root_password_again password cms'"]
+RUN apt-get install -y mysql-server
+RUN mysql_install_db
 
+
+
+
+
+# Apache, Php
+# =========================
 RUN apt-get install -y \
  apache2 \
  libapache2-mod-auth-mysql \
  libapache2-mod-php5 \
- mysql-server \
  php5 \
  php5-mysql \
  python-setuptools \
  vsftpd \
  wget
+COPY foreground.sh /etc/apache2/
+RUN ["chmod", "ugo+x", "/etc/apache2/foreground.sh"]
 
-RUN ["easy_install", "supervisor"]
 
-RUN mysql_install_db
-RUN ["/etc/init.d/mysql", "start"]
 
-# Install Wordpress Cli
-RUN mkdir -p /install/wordpress; \
- cd /install/wordpress; \
- wget https://raw.github.com/wp-cli/builds/gh-pages/phar/wp-cli.phar; \
- chmod +x wp-cli.phar; \
- mv wp-cli.phar /usr/local/bin/wp
 
-# wordpress-db
-RUN ["echo \"CREATE DATABASE wordpress;\" > /tmp/param; /etc/init.d/mysql start; mysql -u root --password=cms < /tmp/param"]
 
-# wordpress
-RUN ["/etc/init.d/mysql start; mkdir /var/www/html/wordpress; cd /var/www/html/wordpress; wp core download --allow-root; wp core config --allow-root --dbname=wordpress --dbuser=root --dbpass=cms"]
+# Vsftpd
+# =========================
+RUN apt-get install -y \
+ vsftpd
+COPY vsftpd.conf /etc/
 
-# enable FTP
+# creates ftp user cms/cms in group root that can access http dir
 RUN adduser --disabled-password --gecos "" cms; \
  usermod -d /var/www/html cms; \
  usermod -g root cms; \
  mkdir -p /var/run/vsftpd/empty; \
- chmod -R ugo+rw /var/www;
+ chmod -R ugo+rw /var/www
+RUN ["/bin/bash", "-c", "echo -e \"cms\\ncms\" > tmp/pwd; passwd cms < tmp/pwd; rm /tmp/pwd"]
 
-RUN ["/bin/bash", "-c", "echo -e \"cms\\ncms\" > tmp/pwd; passwd cms < tmp/pwd"]
 
-COPY bashrc.extension.txt /tmp/
-RUN ["cat /tmp/bashrc.extension.txt >> /etc/bash.bashrc"]
 
-COPY supervisord.conf /etc/
+# Wordpress
+# =========================
 
-COPY foreground.sh /etc/apache2/
-RUN ["chmod", "ugo+x", "/etc/apache2/foreground.sh"]
+# wp-cli
+RUN mkdir -p /tmp/install/wordpress; \
+ cd /tmp/install/wordpress; \
+ wget https://raw.github.com/wp-cli/builds/gh-pages/phar/wp-cli.phar; \
+ chmod +x wp-cli.phar; \
+ mv wp-cli.phar /usr/local/bin/wp; \
+ rm -Rf /tmp/install
 
-COPY vsftpd.conf /etc/
+# wordpress-db
+RUN ["/etc/init.d/mysql start; echo \"CREATE DATABASE wordpress;\" > /tmp/sql; mysql -u root --password=cms < /tmp/sql; rm /tmp/sql"]
 
+# wordpress
+RUN ["mkdir /var/www/html/wordpress; cd /var/www/html/wordpress; wp core download --allow-root"]
+RUN ["cd /var/www/html/wordpress; /etc/init.d/mysql start;  wp core config --allow-root --dbname=wordpress --dbuser=root --dbpass=cms; wp core install --allow-root --url=\"http://127.0.0.1/wordpress\" --title=\"docker-cms-wordpress\" --admin_user=cms --admin_password=cms --admin_email=\"cms@cms.cms\""]
+
+
+
+
+
+# Starts all services
 CMD ["supervisord", "-n"]
 
-EXPOSE 80
-EXPOSE 20
-EXPOSE 3306
+
+
+
+# Ports exposed
+# =========================
+# Http
+EXPOSE 80     
+
+# FTP
+EXPOSE 20     
 EXPOSE 10100
 EXPOSE 10101
 
-
+# MySQL
+EXPOSE 3306   
 
