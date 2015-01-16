@@ -1,0 +1,160 @@
+$ docker run -ti --name="wordpress" ubuntu:14.04
+
+# =================================== this works ===============================================
+
+debconf-set-selections <<< 'mysql-server mysql-server/root_password password qweQWE123'
+debconf-set-selections <<< 'mysql-server mysql-server/root_password_again password qweQWE123'
+apt-get -y install wget apache2 mysql-server libapache2-mod-auth-mysql php5-mysql php5 libapache2-mod-php5 vsftpd nano
+mysql_install_db
+
+# wordpress-cli
+mkdir -p /install/wordpress
+cd /install/wordpress
+wget https://raw.github.com/wp-cli/builds/gh-pages/phar/wp-cli.phar
+chmod +x wp-cli.phar
+mv wp-cli.phar /usr/local/bin/wp
+
+# wordpress-db
+mysql -u root --password=qweQWE123 <<-EOFMYSQL
+CREATE DATABASE wordpress;
+EOFMYSQL
+
+# wordpress
+mkdir /var/www/html/wordpress
+cd /var/www/html/wordpress
+wp core download --allow-root
+wp core config --allow-root --dbname=wordpress --dbuser=root --dbpass=qweQWE123
+# install should be done manually
+
+# =================================== this works ===============================================
+
+
+let's try for the ftp
+
+- - - - - - - - - 
+
+adduser --disabled-password --gecos "" csm
+usermod -d /var/www/html csm
+usermod -g root csm # change csm's primary group to root
+
+# no! echo "csm:csm"|chpasswd
+
+
+mkdir -p /var/run/vsftpd/empty
+
+chmod -R ugo+rw /var/www
+
+chgpasswd cms <<TAG
+cms
+cms
+TAG
+
+# vsftpd file 
+# Uncomment this to enable any form of FTP write command.
+write_enable=YES
+
+
+- - - - - - - - - 
+
+
+
+
+
+mysql -u root --password=qweQWE123 <<-EOFMYSQL
+DROP DATABASE wordpress;
+CREATE DATABASE wordpress;
+EOFMYSQL
+
+#wp core install --url=http://example.com --title=Example --admin_user=admin --admin_password=qweQWE123 --admin_email=qweQWE123@qweQWE123.com --allow-root
+#noooo! php wp-cli.phar core install --url=http://example.com --title=Example --admin_user=qweQWE123 --admin_password=qweQWE123 --admin_email=qweQWE123@qweQWE123.com --path=/var/www --allow-root
+
+# things should be installed under /var/www/html
+
+
+sudo apt-get remove --purge mysql-server mysql-client mysql-common
+sudo apt-get autoremove
+sudo apt-get autoclean
+
+# to discover my only ip address
+A=$(cat /etc/hosts | grep $(hostname) | awk '{print $1;}')
+
+
+mysql> CREATE DATABASE menagerie;
+mysql> USE menagerie
+mysql> DROP DATABASE menagerie;
+
+
+define('WP_HOME','http://example.com');
+define('WP_SITEURL','http://example.com');
+
+
+mysql> select * from wp_options where option_value like '%172.17%';
++-----------+-----------------+---------------------------------------------------------------------------------------------------+----------+
+| option_id | option_name     | option_value                                                                                      | autoload |
++-----------+-----------------+---------------------------------------------------------------------------------------------------+----------+
+|         1 | siteurl         | http://172.17.0.2/wordpress                                                                       | yes      |
+|         2 | home            | http://172.17.0.2/wordpress                                                                       | yes      |
+|       127 | ftp_credentials | a:3:{s:8:"hostname";s:10:"172.17.0.2";s:8:"username";s:3:"cms";s:15:"connection_type";s:3:"ftp";} | yes      |
++-----------+-----------------+---------------------------------------------------------------------------------------------------+----------+
+3 rows in set (0.01 sec)
+
+MY_IP=$(cat /etc/hosts | grep $(hostname) | awk '{print $1;}')
+mysql -u root --password=qweQWE123 -D wordpress <<<"update wp_options set option_value='http://${MY_IP}/wordpress' where option_name in ('siteurl', 'home');"
+
+$ mysql -u root --password=qweQWE123 -D wordpress <<<"select * from wp_options where option_name in ('siteurl', 'home');"
+
+
+===============================
+# Build an image for a container running different CMS.
+# The goal of this container is not to be used to actually host a CMS, but just to have a personal
+# playground for different CMS.
+FROM ubuntu:14.04
+
+RUN ["/bin/bash", "-c", "debconf-set-selections <<< 'mysql-server mysql-server/root_password password cms'"]
+RUN ["/bin/bash", "-c", "debconf-set-selections <<< 'mysql-server mysql-server/root_password_again password cms'"]
+
+RUN apt-get install -y \
+ apache2 \
+ libapache2-mod-auth-mysql \
+ libapache2-mod-php5 \
+ mysql-server \
+ php5 \
+ php5-mysql \
+ vsftpd \
+ wget
+
+RUN mysql_install_db
+RUN /etc/init.d/mysql start
+
+# Install Wordpress Cli
+RUN mkdir -p /install/wordpress; \
+ cd /install/wordpress; \
+ wget https://raw.github.com/wp-cli/builds/gh-pages/phar/wp-cli.phar; \
+ chmod +x wp-cli.phar; \
+ mv wp-cli.phar /usr/local/bin/wp
+
+# wordpress-db
+# RUN ["mysql", "-u root --password=cms <<< 'CREATE DATABASE wordpress;'"]
+
+# wordpress
+RUN mkdir /var/www/html/wordpress; \
+ cd /var/www/html/wordpress; \
+ wp core download --allow-root; \
+ wp core config --allow-root --dbname=wordpress --dbuser=root --dbpass=cms
+
+# enable FTP
+RUN adduser --disabled-password --gecos "" csm; \
+ usermod -d /var/www/html csm; \
+ usermod -g root csm # change csm's primary group to root; \
+ mkdir -p /var/run/vsftpd/empty; \
+ chmod -R ugo+rw /var/www;
+
+RUN ["/bin/bash", "-c", "echo -e \"cms\\ncms\" > tmp/pwd; passwd cms < tmp/pwd"]
+
+COPY bashrc.extension.txt /tmp
+RUN ["cat /tmp/bashrc.extension.txt >> /etc/bash.bashrc"]
+
+EXPOSE 80
+EXPOSE 20
+===================================
+

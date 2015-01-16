@@ -1,0 +1,7 @@
+# Things to be executed at every startup
+/etc/init.d/mysql start
+/etc/init.d/apache2 start
+vsftpd &
+MY_IP=$(cat /etc/hosts | grep $(hostname) | awk '{print $1;}')
+mysql -u root --password=qweQWE123 -D wordpress <<<"update wp_options set option_value='http://${MY_IP}/wordpress' where option_name in ('siteurl', 'home');"
+
